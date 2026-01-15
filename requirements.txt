@@ -1,3 +1,7 @@
+# =============================================================================
+# Video Recommendation System - Requirements
+# =============================================================================
+
 # Core ML Framework
 tensorflow>=2.13.0
 tensorflow-hub>=0.14.0
@@ -22,10 +26,31 @@ pytest-cov>=4.0.0
 # Utilities
 tqdm>=4.65.0
 
-# Vector Search (optional, for production)
-# faiss-cpu>=1.7.4  # For CPU-only environments
-# faiss-gpu>=1.7.4  # For GPU environments
+# =============================================================================
+# Optional Dependencies (uncomment as needed)
+# =============================================================================
 
-# AWS Deployment (optional)
-# boto3>=1.28.0
-# sagemaker>=2.150.0
+# Vector Search
+# faiss-cpu>=1.7.4           # For CPU-only environments
+# faiss-gpu>=1.7.4           # For GPU environments (requires CUDA)
+
+# AWS Deployment
+# boto3>=1.28.0              # AWS SDK
+# sagemaker>=2.150.0         # SageMaker SDK for model deployment
+
+# Redis Cache (for production serving)
+# redis>=4.5.0               # Redis client for caching
+
+# =============================================================================
+# Development Dependencies (optional)
+# =============================================================================
+
+# Code Quality
+# black>=23.0.0              # Code formatter
+# isort>=5.12.0              # Import sorter
+# flake8>=6.0.0              # Linter
+# mypy>=1.0.0                # Type checker
+
+# Documentation
+# sphinx>=6.0.0              # Documentation generator
+# sphinx-rtd-theme>=1.2.0    # Read the Docs theme

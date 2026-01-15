@@ -457,3 +457,5 @@ results/
 # *.tar.bz2
 # *.7z
 # *.rar
+
+.claude/
