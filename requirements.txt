@@ -1,0 +1,31 @@
+# Core ML Framework
+tensorflow>=2.13.0
+tensorflow-hub>=0.14.0
+tensorflow-text>=2.13.0
+
+# Ranking Model
+catboost>=1.2.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=12.0.0
+scikit-learn>=1.3.0
+
+# Configuration
+pyyaml>=6.0
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Utilities
+tqdm>=4.65.0
+
+# Vector Search (optional, for production)
+# faiss-cpu>=1.7.4  # For CPU-only environments
+# faiss-gpu>=1.7.4  # For GPU environments
+
+# AWS Deployment (optional)
+# boto3>=1.28.0
+# sagemaker>=2.150.0

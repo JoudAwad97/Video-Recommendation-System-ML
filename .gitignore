@@ -1,0 +1,459 @@
+# =============================================================================
+# Video Recommendation System - .gitignore
+# =============================================================================
+
+# =============================================================================
+# Python
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# Poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.env.local
+.env.*.local
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# =============================================================================
+# Machine Learning / Data Science
+# =============================================================================
+
+# Datasets - Large files (root level only, not src/data)
+/data/
+/datasets/
+/raw_data/
+/processed_data/
+
+# Model artifacts - Large binary files (root level only, not src/models)
+/models/
+/model_checkpoints/
+/checkpoints/
+*.h5
+*.hdf5
+*.ckpt
+*.ckpt.*
+*.pb
+*.pth
+*.pt
+saved_model/
+*.keras
+*.weights.h5
+
+# TensorFlow specific
+logs/
+tensorboard/
+events.out.tfevents.*
+*.tfrecords
+tfrecords/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# DVC
+.dvc/
+*.dvc
+
+# Embeddings and large numpy arrays
+*.npy
+*.npz
+embeddings/
+title_embeddings/
+tag_embeddings/
+
+# FAISS indexes
+*.index
+*.faiss
+indexes/
+
+# Parquet files (data)
+*.parquet
+parquet_data/
+
+# HDF5 files
+*.hdf
+*.hdf5
+
+# Pickle files (can contain large data)
+*.pkl
+*.pickle
+
+# Catboost model files
+*.cbm
+
+# =============================================================================
+# Artifacts and Generated Files
+# =============================================================================
+
+# Preprocessing artifacts
+artifacts/
+vocabularies/
+normalizers/
+buckets/
+
+# Pipeline outputs
+pipeline_outputs/
+pipeline_runs/
+
+# Feature store cache
+feature_cache/
+
+# Experiment tracking
+experiments/
+runs/
+
+# =============================================================================
+# AWS / Cloud
+# =============================================================================
+
+# AWS credentials
+.aws/
+# Note: AWS credentials/config files are typically at ~/.aws/, not in project
+aws-credentials.json
+
+# SageMaker
+sagemaker_outputs/
+sagemaker-training/
+
+# CloudFormation
+*.template.json
+*.template.yaml
+samconfig.toml
+
+# Lambda deployment packages
+lambda_packages/
+*.zip
+
+# =============================================================================
+# IDE / Editor
+# =============================================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains (PyCharm, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+*~
+tags
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# Operating System
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Logs and Temporary Files
+# =============================================================================
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Cache directories
+.cache/
+cache/
+
+# =============================================================================
+# Security / Secrets
+# =============================================================================
+
+# Environment files with secrets
+.env
+.env.*
+*.env
+secrets.yaml
+secrets.json
+config.local.yaml
+
+# API keys
+*.key
+*.pem
+*.crt
+
+# =============================================================================
+# Testing
+# =============================================================================
+
+# Test outputs
+test_outputs/
+test_data/
+.pytest_cache/
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# =============================================================================
+# Docker
+# =============================================================================
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# =============================================================================
+# Jupyter
+# =============================================================================
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Jupyter lab workspace
+*.jupyterlab-workspace
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+# Sphinx
+docs/_build/
+docs/api/
+
+# MkDocs
+site/
+
+# =============================================================================
+# Project-Specific
+# =============================================================================
+
+# Synthetic data (regeneratable)
+synthetic_data/
+
+# Vector database data
+vector_db_data/
+pinecone_data/
+weaviate_data/
+
+# Redis dumps
+dump.rdb
+appendonly.aof
+
+# Benchmark results
+benchmarks/
+benchmark_results/
+
+# Profiling outputs
+profiles/
+*.prof
+*.pstats
+
+# Experiment configs that may contain secrets
+/experiment_configs/
+
+# Local development configs (root level only)
+/local_config/
+/dev_config/
+
+# Output directories
+output/
+outputs/
+results/
+
+# =============================================================================
+# Large Files (regardless of type)
+# =============================================================================
+
+# Any file larger than 100MB should be managed with Git LFS or excluded
+# Uncomment if needed:
+# *.zip
+# *.tar
+# *.tar.gz
+# *.tar.bz2
+# *.7z
+# *.rar

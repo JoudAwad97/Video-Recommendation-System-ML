@@ -1,0 +1,70 @@
+# Processing Pipeline Configuration
+
+# Data paths
+data:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "processed_data"
+  artifacts_dir: "artifacts"
+
+# Embedding dimensions
+embeddings:
+  user_id_dim: 32
+  video_id_dim: 32
+  country_dim: 16
+  language_dim: 16
+  category_dim: 32
+  title_embedding_dim: 768
+  tags_embedding_dim: 100
+
+# Bucket boundaries
+buckets:
+  age: [18, 25, 35, 45, 55, 65]
+  duration: [60, 300, 600, 1800, 3600]
+  subscriber_tiers: [10000, 100000, 1000000]
+  view_count: [1000, 10000, 100000, 1000000]
+
+# Two-Tower model configuration
+two_tower:
+  min_watch_ratio: 0.4
+  user_features:
+    - user_id
+    - country
+    - user_language
+    - age
+    - previously_watched_category
+  video_features:
+    - video_id
+    - category
+    - title
+    - video_duration
+    - popularity
+    - video_language
+    - tags
+
+# Ranker model configuration
+ranker:
+  min_watch_ratio: 0.4
+  negative_sample_ratio: 3
+  categorical_features:
+    - country
+    - user_language
+    - category
+    - child_categories
+    - video_language
+    - interaction_time_day
+    - device
+
+# Data split ratios
+split:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+
+# Random seed
+random_seed: 42
+
+# Processing options
+processing:
+  batch_size: 1000
+  num_workers: 4
+  use_multiprocessing: true
