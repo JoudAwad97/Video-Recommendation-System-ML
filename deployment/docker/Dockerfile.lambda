@@ -1,0 +1,22 @@
+# Lambda Docker image for Video Recommendation Service
+# Uses AWS Lambda Python base image with ML dependencies
+
+FROM public.ecr.aws/lambda/python:3.11
+
+# All packages use pre-built wheels for ARM64, no gcc needed
+
+# Install Python dependencies
+# Install numpy first to ensure correct version for scipy
+# Install catboost without dependencies (skip matplotlib/graphviz which are only for visualization)
+# Pin pyarrow to a version with pre-built ARM64 wheels
+# Use retries for network resilience
+RUN pip install --no-cache-dir --retries 5 --timeout 300 numpy==1.26.4 && \
+    pip install --no-cache-dir --retries 5 --timeout 300 scipy==1.13.1 pandas==2.1.4 scikit-learn==1.4.2 && \
+    pip install --no-cache-dir --retries 5 --timeout 300 --no-deps catboost==1.2.7 && \
+    pip install --no-cache-dir --retries 5 --timeout 300 pyarrow==17.0.0 redis==5.0.0 pyyaml==6.0.2
+
+# Copy source code
+COPY src/ ${LAMBDA_TASK_ROOT}/src/
+
+# Set the Lambda handler
+CMD [ "src.lambdas.recommendations.handler" ]

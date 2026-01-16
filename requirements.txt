@@ -38,6 +38,9 @@ tqdm>=4.65.0
 # boto3>=1.28.0              # AWS SDK
 # sagemaker>=2.150.0         # SageMaker SDK for model deployment
 
+# HTTP Client (for bootstrap script)
+requests>=2.31.0            # HTTP client for API testing
+
 # Redis Cache (for production serving)
 # redis>=4.5.0               # Redis client for caching
 

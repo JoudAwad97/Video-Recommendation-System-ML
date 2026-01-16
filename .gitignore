@@ -13,7 +13,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+.claude/
 # Distribution / packaging
 .Python
 build/
@@ -22,7 +22,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -99,7 +98,6 @@ celerybeat.pid
 # Environments
 .env
 .env.local
-.env.*.local
 .venv
 env/
 venv/
@@ -197,6 +195,7 @@ parquet_data/
 
 # Catboost model files
 *.cbm
+catboost_info/
 
 # =============================================================================
 # Artifacts and Generated Files
@@ -352,7 +351,6 @@ cache/
 
 # Environment files with secrets
 .env
-.env.*
 *.env
 secrets.yaml
 secrets.json
@@ -458,4 +456,32 @@ results/
 # *.7z
 # *.rar
 
-.claude/
+
+
+node_modules/
+CLAUDE.md
+
+# =============================================================================
+# Additional Development Files
+# =============================================================================
+
+# Ruff cache
+.ruff_cache/
+
+# Pre-commit
+.pre-commit-cache/
+
+# Secrets baseline (should be committed but referenced here for awareness)
+# .secrets.baseline
+
+# CDK outputs
+deployment/cdk/cdk.out/
+
+# Local test data
+data/synthetic/
+data/embeddings/
+data/feature_store/
+data/vector_store/
+
+# Bootstrap results
+data/bootstrap_results.json

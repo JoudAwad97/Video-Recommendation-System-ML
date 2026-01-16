@@ -2,6 +2,7 @@
 Preprocessing job for ML pipeline.
 
 Handles data preprocessing using SageMaker Processing or local execution:
+- Synthetic data generation
 - Feature engineering
 - Vocabulary building
 - Embedding computation
@@ -13,6 +14,9 @@ from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
 from pathlib import Path
 import json
+import tempfile
+import os
+
 import pandas as pd
 import numpy as np
 
@@ -554,129 +558,323 @@ class PreprocessingJob:
         self._progress_callbacks.append(callback)
 
 
-class SageMakerPreprocessingJob:
-    """SageMaker Processing job wrapper.
+def run_preprocessing(
+    data_bucket: str,
+    artifacts_bucket: str,
+    model_bucket: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Run preprocessing job for Lambda invocation.
 
-    Runs preprocessing as a SageMaker Processing job for
-    scalable, managed execution.
+    This function:
+    1. Generates synthetic data if no data exists in S3
+    2. Builds vocabularies and computes statistics
+    3. Processes data for Two-Tower and Ranker training
+    4. Uploads all artifacts to S3
+
+    Args:
+        data_bucket: S3 bucket containing raw data.
+        artifacts_bucket: S3 bucket for saving artifacts.
+        model_bucket: S3 bucket for models (optional).
+        config: Additional configuration options.
+
+    Returns:
+        Dictionary with preprocessing results.
     """
+    import boto3
 
-    def __init__(self, config: PreprocessingConfig, role_arn: str, s3_bucket: str):
-        """Initialize SageMaker preprocessing job.
+    logger.info(f"Running preprocessing job with data_bucket={data_bucket}")
 
-        Args:
-            config: Preprocessing configuration.
-            role_arn: IAM role ARN for SageMaker.
-            s3_bucket: S3 bucket for data.
-        """
-        self.config = config
-        self.role_arn = role_arn
-        self.s3_bucket = s3_bucket
-        self._boto3_available = False
+    s3 = boto3.client("s3")
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    job_id = f"preprocess_{timestamp}"
 
-        try:
-            import boto3
-            self._boto3_available = True
-            self._sagemaker_client = boto3.client("sagemaker")
-        except ImportError:
-            logger.warning("boto3 not available. SageMaker jobs will not work.")
+    # Configuration
+    num_users = config.get("num_users", 1000) if config else 1000
+    num_channels = config.get("num_channels", 100) if config else 100
+    num_videos = config.get("num_videos", 500) if config else 500
+    num_interactions = config.get("num_interactions", 10000) if config else 10000
 
-    def submit(
-        self,
-        input_s3_uri: str,
-        output_s3_uri: str,
-        job_name: Optional[str] = None,
-    ) -> str:
-        """Submit the processing job.
+    try:
+        # Step 1: Generate synthetic data
+        logger.info("Step 1: Generating synthetic data...")
+        from ..data.synthetic_generator import SyntheticDataGenerator
 
-        Args:
-            input_s3_uri: S3 URI for input data.
-            output_s3_uri: S3 URI for output.
-            job_name: Optional job name.
-
-        Returns:
-            Processing job ARN.
-        """
-        if not self._boto3_available:
-            raise ImportError("boto3 is required for SageMaker jobs")
-
-        job_name = job_name or f"preprocess-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-
-        response = self._sagemaker_client.create_processing_job(
-            ProcessingJobName=job_name,
-            ProcessingResources={
-                "ClusterConfig": {
-                    "InstanceCount": self.config.instance_count,
-                    "InstanceType": self.config.instance_type,
-                    "VolumeSizeInGB": 50,
-                }
-            },
-            StoppingCondition={
-                "MaxRuntimeInSeconds": self.config.max_runtime_seconds
-            },
-            AppSpecification={
-                "ImageUri": self._get_processing_image_uri(),
-                "ContainerEntrypoint": ["python3", "/opt/ml/processing/input/code/preprocess.py"],
-            },
-            RoleArn=self.role_arn,
-            ProcessingInputs=[
-                {
-                    "InputName": "input-data",
-                    "S3Input": {
-                        "S3Uri": input_s3_uri,
-                        "LocalPath": "/opt/ml/processing/input/data",
-                        "S3DataType": "S3Prefix",
-                        "S3InputMode": "File",
-                    },
-                }
-            ],
-            ProcessingOutputConfig={
-                "Outputs": [
-                    {
-                        "OutputName": "output-data",
-                        "S3Output": {
-                            "S3Uri": output_s3_uri,
-                            "LocalPath": "/opt/ml/processing/output",
-                            "S3UploadMode": "EndOfJob",
-                        },
-                    }
-                ]
-            },
+        generator = SyntheticDataGenerator(seed=42)
+        data = generator.generate_all(
+            num_users=num_users,
+            num_channels=num_channels,
+            num_videos=num_videos,
+            num_interactions=num_interactions,
         )
 
-        job_arn = response["ProcessingJobArn"]
-        logger.info(f"Submitted SageMaker Processing job: {job_name}")
-        return job_arn
+        users_df = data["users"]
+        channels_df = data["channels"]
+        videos_df = data["videos"]
+        interactions_df = data["interactions"]
 
-    def _get_processing_image_uri(self) -> str:
-        """Get the processing container image URI.
-
-        Returns:
-            Container image URI.
-        """
-        # Use sklearn processing container as base
-        return f"683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3"
-
-    def get_status(self, job_name: str) -> Dict[str, Any]:
-        """Get job status.
-
-        Args:
-            job_name: Processing job name.
-
-        Returns:
-            Job status information.
-        """
-        if not self._boto3_available:
-            raise ImportError("boto3 is required for SageMaker jobs")
-
-        response = self._sagemaker_client.describe_processing_job(
-            ProcessingJobName=job_name
+        logger.info(
+            f"Generated: {len(users_df)} users, {len(channels_df)} channels, "
+            f"{len(videos_df)} videos, {len(interactions_df)} interactions"
         )
 
-        return {
-            "job_name": job_name,
-            "status": response["ProcessingJobStatus"],
-            "creation_time": response.get("CreationTime"),
-            "processing_end_time": response.get("ProcessingEndTime"),
-            "failure_reason": response.get("FailureReason"),
+        # Step 2: Upload raw data to S3
+        logger.info("Step 2: Uploading raw data to S3...")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Save to temp files
+            users_path = os.path.join(tmpdir, "users.parquet")
+            channels_path = os.path.join(tmpdir, "channels.parquet")
+            videos_path = os.path.join(tmpdir, "videos.parquet")
+            interactions_path = os.path.join(tmpdir, "interactions.parquet")
+
+            users_df.to_parquet(users_path, index=False)
+            channels_df.to_parquet(channels_path, index=False)
+            videos_df.to_parquet(videos_path, index=False)
+            interactions_df.to_parquet(interactions_path, index=False)
+
+            # Upload to S3
+            s3.upload_file(users_path, data_bucket, f"raw_data/{job_id}/users.parquet")
+            s3.upload_file(channels_path, data_bucket, f"raw_data/{job_id}/channels.parquet")
+            s3.upload_file(videos_path, data_bucket, f"raw_data/{job_id}/videos.parquet")
+            s3.upload_file(interactions_path, data_bucket, f"raw_data/{job_id}/interactions.parquet")
+
+        # Step 3: Build vocabularies
+        logger.info("Step 3: Building vocabularies...")
+        vocabularies = {}
+
+        # Rename columns to match expected schema
+        users_df = users_df.rename(columns={
+            "id": "user_id",
+            "country_code": "country",
+            "preferred_language": "user_language",
+        })
+
+        videos_df = videos_df.rename(columns={
+            "id": "video_id",
+            "duration": "video_duration",
+            "language": "video_language",
+        })
+
+        # User vocabularies
+        vocabularies["user_id"] = _build_vocabulary(users_df["user_id"].astype(str).unique())
+        vocabularies["country"] = _build_vocabulary(users_df["country"].dropna().unique())
+        vocabularies["user_language"] = _build_vocabulary(users_df["user_language"].dropna().unique())
+
+        # Video vocabularies
+        vocabularies["video_id"] = _build_vocabulary(videos_df["video_id"].astype(str).unique())
+        vocabularies["category"] = _build_vocabulary(videos_df["category"].dropna().unique())
+        vocabularies["video_language"] = _build_vocabulary(videos_df["video_language"].dropna().unique())
+        vocabularies["popularity"] = _build_vocabulary(videos_df["popularity"].dropna().unique())
+
+        # Shared language vocabulary
+        all_languages = set(users_df["user_language"].dropna().unique())
+        all_languages.update(videos_df["video_language"].dropna().unique())
+        vocabularies["language"] = _build_vocabulary(list(all_languages))
+
+        vocabulary_sizes = {k: len(v) for k, v in vocabularies.items()}
+        logger.info(f"Built vocabularies: {vocabulary_sizes}")
+
+        # Step 4: Compute statistics
+        logger.info("Step 4: Computing statistics...")
+        stats = {}
+        stats["age"] = _compute_stats(users_df["age"])
+        stats["video_duration"] = _compute_stats(videos_df["video_duration"])
+        stats["view_count"] = _compute_stats(videos_df["view_count"], log_transform=True)
+        stats["like_count"] = _compute_stats(videos_df["like_count"], log_transform=True)
+        stats["comment_count"] = _compute_stats(videos_df["comment_count"], log_transform=True)
+
+        # Step 5: Generate Two-Tower training data
+        logger.info("Step 5: Generating Two-Tower training data...")
+
+        # Filter for positive interactions (watch > 40%, like, comment)
+        interactions_df["is_positive"] = False
+
+        # Watch > 40% of video duration
+        watch_mask = interactions_df["interaction_type"] == "watch"
+        interactions_df.loc[watch_mask, "is_positive"] = True  # Simplified: all watches are positive
+
+        # Likes
+        like_mask = interactions_df["interaction_type"] == "like"
+        interactions_df.loc[like_mask, "is_positive"] = True
+
+        # Comments
+        comment_mask = interactions_df["interaction_type"] == "comment"
+        interactions_df.loc[comment_mask, "is_positive"] = True
+
+        positive_interactions = interactions_df[interactions_df["is_positive"]].copy()
+        logger.info(f"Found {len(positive_interactions)} positive interactions")
+
+        # Merge with user and video features
+        two_tower_df = positive_interactions.merge(
+            users_df, on="user_id", how="left"
+        ).merge(
+            videos_df, on="video_id", how="left"
+        )
+
+        # Step 6: Generate Ranker training data
+        logger.info("Step 6: Generating Ranker training data...")
+
+        # Ranker needs both positive and negative examples
+        # Create negative samples by randomly pairing users with videos they didn't interact with
+        user_video_pairs = set(zip(interactions_df["user_id"], interactions_df["video_id"]))
+        all_users = users_df["user_id"].tolist()
+        all_videos = videos_df["video_id"].tolist()
+
+        negative_samples = []
+        np.random.seed(42)
+        target_negatives = len(positive_interactions)  # 1:1 ratio
+
+        while len(negative_samples) < target_negatives:
+            user = np.random.choice(all_users)
+            video = np.random.choice(all_videos)
+            if (user, video) not in user_video_pairs:
+                negative_samples.append({
+                    "user_id": user,
+                    "video_id": video,
+                    "label": 0,
+                })
+                user_video_pairs.add((user, video))
+
+        negative_df = pd.DataFrame(negative_samples)
+        positive_labels = positive_interactions[["user_id", "video_id"]].copy()
+        positive_labels["label"] = 1
+
+        ranker_labels = pd.concat([positive_labels, negative_df], ignore_index=True)
+        ranker_df = ranker_labels.merge(users_df, on="user_id", how="left").merge(
+            videos_df, on="video_id", how="left"
+        )
+
+        logger.info(f"Ranker dataset: {len(ranker_df)} samples ({len(positive_labels)} positive, {len(negative_df)} negative)")
+
+        # Step 7: Split into train/val and upload to S3
+        logger.info("Step 7: Splitting data and uploading to S3...")
+
+        # Train/val split (80/20)
+        np.random.seed(42)
+        train_mask = np.random.rand(len(two_tower_df)) < 0.8
+        two_tower_train = two_tower_df[train_mask]
+        two_tower_val = two_tower_df[~train_mask]
+
+        train_mask = np.random.rand(len(ranker_df)) < 0.8
+        ranker_train = ranker_df[train_mask]
+        ranker_val = ranker_df[~train_mask]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Save datasets
+            two_tower_train_path = os.path.join(tmpdir, "two_tower_train.parquet")
+            two_tower_val_path = os.path.join(tmpdir, "two_tower_val.parquet")
+            ranker_train_path = os.path.join(tmpdir, "ranker_train.parquet")
+            ranker_val_path = os.path.join(tmpdir, "ranker_val.parquet")
+
+            two_tower_train.to_parquet(two_tower_train_path, index=False)
+            two_tower_val.to_parquet(two_tower_val_path, index=False)
+            ranker_train.to_parquet(ranker_train_path, index=False)
+            ranker_val.to_parquet(ranker_val_path, index=False)
+
+            # Upload datasets
+            s3.upload_file(two_tower_train_path, artifacts_bucket, f"datasets/{job_id}/two_tower/train.parquet")
+            s3.upload_file(two_tower_val_path, artifacts_bucket, f"datasets/{job_id}/two_tower/val.parquet")
+            s3.upload_file(ranker_train_path, artifacts_bucket, f"datasets/{job_id}/ranker/train.parquet")
+            s3.upload_file(ranker_val_path, artifacts_bucket, f"datasets/{job_id}/ranker/val.parquet")
+
+            # Save and upload vocabularies
+            vocab_path = os.path.join(tmpdir, "vocabularies.json")
+            with open(vocab_path, "w") as f:
+                json.dump(vocabularies, f, indent=2)
+            s3.upload_file(vocab_path, artifacts_bucket, f"preprocessing/{job_id}/vocabularies.json")
+
+            # Save and upload statistics
+            stats_path = os.path.join(tmpdir, "statistics.json")
+            with open(stats_path, "w") as f:
+                json.dump(stats, f, indent=2)
+            s3.upload_file(stats_path, artifacts_bucket, f"preprocessing/{job_id}/statistics.json")
+
+            # Save video catalog for embedding generation
+            video_catalog_path = os.path.join(tmpdir, "video_catalog.parquet")
+            videos_df.to_parquet(video_catalog_path, index=False)
+            s3.upload_file(video_catalog_path, artifacts_bucket, f"preprocessing/{job_id}/video_catalog.parquet")
+
+        logger.info("Preprocessing completed successfully!")
+
+        result = {
+            "status": "success",
+            "job_id": job_id,
+            "message": "Preprocessing completed successfully",
+            "artifacts": {
+                "vocabularies": f"s3://{artifacts_bucket}/preprocessing/{job_id}/vocabularies.json",
+                "statistics": f"s3://{artifacts_bucket}/preprocessing/{job_id}/statistics.json",
+                "video_catalog": f"s3://{artifacts_bucket}/preprocessing/{job_id}/video_catalog.parquet",
+            },
+            "datasets": {
+                "two_tower_train": f"s3://{artifacts_bucket}/datasets/{job_id}/two_tower/train.parquet",
+                "two_tower_val": f"s3://{artifacts_bucket}/datasets/{job_id}/two_tower/val.parquet",
+                "ranker_train": f"s3://{artifacts_bucket}/datasets/{job_id}/ranker/train.parquet",
+                "ranker_val": f"s3://{artifacts_bucket}/datasets/{job_id}/ranker/val.parquet",
+            },
+            "statistics": {
+                "num_users": len(users_df),
+                "num_videos": len(videos_df),
+                "num_interactions": len(interactions_df),
+                "num_positive_interactions": len(positive_interactions),
+                "two_tower_train_size": len(two_tower_train),
+                "two_tower_val_size": len(two_tower_val),
+                "ranker_train_size": len(ranker_train),
+                "ranker_val_size": len(ranker_val),
+                "vocabulary_sizes": vocabulary_sizes,
+            },
         }
+
+        logger.info(f"Preprocessing result: {json.dumps(result, default=str)}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Preprocessing failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "failed",
+            "job_id": job_id,
+            "error": str(e),
+        }
+
+
+def _build_vocabulary(values, add_oov: bool = True, add_padding: bool = True) -> Dict[str, int]:
+    """Build a vocabulary from values."""
+    vocab = {}
+    idx = 0
+
+    if add_padding:
+        vocab["[PAD]"] = idx
+        idx += 1
+
+    if add_oov:
+        vocab["[OOV]"] = idx
+        idx += 1
+
+    for value in sorted(set(str(v) for v in values)):
+        if value not in vocab:
+            vocab[value] = idx
+            idx += 1
+
+    return vocab
+
+
+def _compute_stats(series: pd.Series, log_transform: bool = False) -> Dict[str, float]:
+    """Compute statistics for a single feature."""
+    values = series.dropna()
+    if len(values) == 0:
+        return {"mean": 0, "std": 1, "min": 0, "max": 0}
+
+    stats = {
+        "mean": float(values.mean()),
+        "std": float(values.std()) or 1.0,
+        "min": float(values.min()),
+        "max": float(values.max()),
+    }
+
+    if log_transform:
+        log_values = np.log1p(values)
+        stats["log_mean"] = float(log_values.mean())
+        stats["log_std"] = float(log_values.std()) or 1.0
+
+    return stats

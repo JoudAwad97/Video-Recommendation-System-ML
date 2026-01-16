@@ -47,11 +47,10 @@ from src.serving.recommendation_service import (
     RecommendationService,
     VideoRecommendation,
 )
-from src.serving.lambda_handler import (
-    LambdaConfig,
+from src.lambdas.recommendations import (
     handler,
     _create_response,
-    _error_response,
+    _create_error_response,
 )
 
 
@@ -765,24 +764,12 @@ class TestLambdaHandler:
 
     def test_error_response(self):
         """Test creating error response."""
-        response = _error_response(400, "INVALID", "Bad request")
+        response = _create_error_response(400, "INVALID", "Bad request")
 
         assert response["statusCode"] == 400
         body = __import__("json").loads(response["body"])
         assert body["error"]["type"] == "INVALID"
         assert body["error"]["message"] == "Bad request"
-
-    def test_lambda_config_from_environment(self, monkeypatch):
-        """Test creating config from environment variables."""
-        monkeypatch.setenv("USE_REDIS", "true")
-        monkeypatch.setenv("REDIS_HOST", "redis.example.com")
-        monkeypatch.setenv("DEFAULT_NUM_RECOMMENDATIONS", "30")
-
-        config = LambdaConfig.from_environment()
-
-        assert config.use_redis is True
-        assert config.redis_host == "redis.example.com"
-        assert config.default_num_recommendations == 30
 
     def test_health_check_endpoint(self):
         """Test health check endpoint."""

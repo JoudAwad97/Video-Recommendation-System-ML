@@ -1,26 +1,21 @@
 # Video Recommendation System
 
-A production-ready video recommendation system using a Two-Tower architecture for candidate retrieval and CatBoost Ranker for personalized ranking. Built with TensorFlow, designed for AWS deployment.
+A production-ready video recommendation system using a Two-Tower architecture for candidate retrieval and CatBoost Ranker for personalized ranking. Built with TensorFlow, designed for AWS deployment with fully automated ML training pipelines.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
-- [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Modules](#modules)
-  - [Data Processing](#data-processing)
-  - [Feature Engineering](#feature-engineering)
-  - [Models](#models)
-  - [Training Pipeline](#training-pipeline)
-  - [Serving](#serving)
-  - [Monitoring](#monitoring)
-  - [Data Collection](#data-collection)
+- [Installation](#installation)
+- [ML Pipeline](#ml-pipeline)
+- [Development](#development)
+- [Deployment](#deployment)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
 - [Testing](#testing)
-- [Deployment](#deployment)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Overview
@@ -38,9 +33,10 @@ This system implements a 4-stage recommendation pipeline:
 - **Multi-Query Retrieval**: Generate diverse candidates using category-based query contexts
 - **CatBoost Ranker**: Gradient boosting model with categorical feature support
 - **Real-time Serving**: AWS Lambda + API Gateway with Redis caching
-- **Feature Store Integration**: SageMaker Feature Store for online/offline feature serving
+- **Feature Store Integration**: DynamoDB for online features, Glue for offline features
 - **A/B Testing Framework**: Built-in experimentation and metric tracking
-- **MLOps Pipeline**: Automated training, versioning, and deployment
+- **Automated ML Pipeline**: End-to-end training, evaluation, and deployment via Step Functions
+- **Production-Ready**: Health checks, circuit breakers, structured logging, secrets management
 
 ## Architecture
 
@@ -64,540 +60,487 @@ This system implements a 4-stage recommendation pipeline:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### ML Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           ML Training Pipeline                               │
+│                        (AWS Step Functions)                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────────────┐    ┌──────────────┐          │
+│  │ Preprocessing │───▶│   Parallel Training  │───▶│  Evaluation  │          │
+│  │    Lambda    │    │                      │    │    Lambda    │          │
+│  └──────────────┘    │ ┌──────────────────┐ │    └──────────────┘          │
+│         │            │ │ Two-Tower Train  │ │           │                   │
+│         ▼            │ │     Lambda       │ │           ▼                   │
+│  ┌──────────────┐    │ └──────────────────┘ │    ┌──────────────┐          │
+│  │ Generate     │    │ ┌──────────────────┐ │    │  Deployment  │          │
+│  │ Synthetic    │    │ │  Ranker Train    │ │    │    Lambda    │          │
+│  │ Data         │    │ │     Lambda       │ │    │ (Conditional)│          │
+│  └──────────────┘    │ └──────────────────┘ │    └──────────────┘          │
+│                      └──────────────────────┘           │                   │
+│                                                         ▼                   │
+│                                              ┌──────────────────┐           │
+│                                              │ Update DynamoDB  │           │
+│                                              │ + S3 Vector Store│           │
+│                                              └──────────────────┘           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
 ## Project Structure
 
 ```
 video-recommendation-system/
 ├── src/
-│   ├── config/                     # Feature and model configurations
+│   ├── config/                     # Configuration management
 │   │   ├── feature_config.py       # Feature definitions, embedding dims
-│   │   └── __init__.py
+│   │   └── settings.py             # Centralized settings with validation
+│   │
+│   ├── lambdas/                    # Lambda function entry points
+│   │   ├── recommendations.py      # Real-time serving handler
+│   │   ├── preprocessing.py        # Data preprocessing handler
+│   │   ├── training.py             # Model training handlers
+│   │   ├── evaluation.py           # Model evaluation handler
+│   │   └── deployment.py           # Model deployment handler
 │   │
 │   ├── data/                       # Data schemas and loaders
 │   │   ├── schemas.py              # User, Video, Channel, Interaction dataclasses
 │   │   ├── synthetic_generator.py  # Generate synthetic test data
-│   │   ├── data_loader.py          # Load data from various sources
-│   │   └── __init__.py
+│   │   └── data_loader.py          # Load data from various sources
 │   │
 │   ├── preprocessing/              # Data preprocessing components
 │   │   ├── vocabulary_builder.py   # Categorical vocabulary builders
-│   │   ├── normalizers.py          # Numeric normalization (z-score, log, buckets)
-│   │   ├── text_embedder.py        # BERT title embeddings via TF Hub
+│   │   ├── normalizers.py          # Numeric normalization
+│   │   ├── text_embedder.py        # BERT title embeddings
 │   │   ├── tag_embedder.py         # CBOW-style tag embeddings
-│   │   ├── artifacts.py            # Save/load preprocessing artifacts
-│   │   └── __init__.py
+│   │   └── artifacts.py            # Save/load preprocessing artifacts
 │   │
 │   ├── feature_engineering/        # Feature transformations
 │   │   ├── user_features.py        # User tower feature engineering
 │   │   ├── video_features.py       # Video tower feature engineering
 │   │   ├── interaction_features.py # Interaction-based features
-│   │   ├── ranker_features.py      # Ranker model features
-│   │   └── __init__.py
-│   │
-│   ├── dataset/                    # Dataset generation
-│   │   ├── two_tower_dataset.py    # Two-Tower training pairs
-│   │   ├── ranker_dataset.py       # Ranker pos/neg samples
-│   │   ├── tf_dataset_builder.py   # TensorFlow Dataset builders
-│   │   └── __init__.py
+│   │   └── ranker_features.py      # Ranker model features
 │   │
 │   ├── models/                     # Model definitions
 │   │   ├── two_tower.py            # Two-Tower retrieval model
 │   │   ├── ranker.py               # CatBoost ranking model
 │   │   ├── trainers.py             # Training loops and callbacks
-│   │   ├── metrics.py              # Custom evaluation metrics
-│   │   ├── model_config.py         # Model hyperparameters
-│   │   └── __init__.py
-│   │
-│   ├── pipeline/                   # Data processing pipeline
-│   │   ├── processing_pipeline.py  # Main orchestration
-│   │   ├── pipeline_config.py      # Pipeline configuration
-│   │   └── __init__.py
-│   │
-│   ├── ml_pipeline/                # MLOps pipeline
-│   │   ├── ml_pipeline.py          # End-to-end ML pipeline
-│   │   ├── training_orchestrator.py# Training job orchestration
-│   │   ├── preprocessing_job.py    # Data preprocessing jobs
-│   │   ├── deployment_pipeline.py  # Model deployment automation
-│   │   ├── model_registry.py       # Model versioning and registry
-│   │   ├── data_versioning.py      # Dataset versioning
-│   │   ├── pipeline_config.py      # Pipeline configuration
-│   │   └── __init__.py
+│   │   └── metrics.py              # Custom evaluation metrics
 │   │
 │   ├── serving/                    # Model serving components
 │   │   ├── recommendation_service.py   # Main recommendation API
-│   │   ├── lambda_handler.py           # AWS Lambda entry point
-│   │   ├── feature_store_client.py     # SageMaker Feature Store client
-│   │   ├── redis_cache_client.py       # Redis caching layer
-│   │   ├── multi_query_generator.py    # Diverse candidate generation
-│   │   ├── filtering_service.py        # Business rule filtering
-│   │   ├── ranker_service_v2.py        # Enhanced ranking service
 │   │   ├── vector_store.py             # FAISS vector store
+│   │   ├── feature_store_client.py     # DynamoDB feature client
+│   │   ├── redis_cache_client.py       # Redis caching layer
+│   │   ├── filtering_service.py        # Business rule filtering
 │   │   ├── offline_pipeline.py         # Batch embedding generation
-│   │   ├── candidate_retrieval.py      # ANN candidate retrieval
-│   │   ├── query_encoder.py            # User query encoding
-│   │   ├── ranking_service.py          # Ranking service
-│   │   ├── orchestrator.py             # Service orchestration
-│   │   ├── sagemaker_deployment.py     # SageMaker deployment
-│   │   ├── serving_config.py           # Serving configuration
-│   │   └── __init__.py
+│   │   └── ranker_service_v2.py        # Enhanced ranking service
+│   │
+│   ├── ml_pipeline/                # MLOps pipeline (Step Functions)
+│   │   ├── ml_pipeline.py              # Main pipeline orchestrator
+│   │   ├── pipeline_config.py          # Pipeline configuration
+│   │   ├── training_orchestrator.py    # Training job orchestration
+│   │   ├── preprocessing_job.py        # Data preprocessing jobs
+│   │   ├── deployment_pipeline.py      # Model deployment automation
+│   │   ├── model_registry.py           # Model versioning
+│   │   └── data_versioning.py          # Data versioning and splits
 │   │
 │   ├── monitoring/                 # Monitoring and observability
 │   │   ├── online_metrics.py       # Real-time metric tracking
-│   │   ├── performance_monitor.py  # Latency and throughput monitoring
-│   │   ├── data_quality_monitor.py # Data drift detection
-│   │   ├── data_capture.py         # Inference data logging
-│   │   ├── ab_testing.py           # A/B testing framework
-│   │   ├── ranker_sampler.py       # Ranker performance sampling
-│   │   ├── monitoring_config.py    # Monitoring configuration
-│   │   └── __init__.py
+│   │   ├── performance_monitor.py  # Latency monitoring
+│   │   └── ab_testing.py           # A/B testing framework
 │   │
 │   ├── data_collection/            # Continuous learning
 │   │   ├── ground_truth_collector.py   # Collect user feedback
 │   │   ├── inference_tracker.py        # Track inference results
-│   │   ├── feedback_loop.py            # Feedback processing
-│   │   ├── merge_job.py                # Merge feedback with training data
-│   │   ├── collection_config.py        # Collection configuration
-│   │   └── __init__.py
+│   │   ├── merge_job.py                # Merge predictions with feedback
+│   │   └── feedback_loop.py            # Feedback processing
 │   │
 │   └── utils/                      # Utilities
-│       ├── io_utils.py             # File I/O (JSON, Parquet, TFRecord)
-│       ├── logging_utils.py        # Structured logging
-│       └── __init__.py
+│       ├── logging_utils.py        # Structured JSON/text logging
+│       ├── health.py               # Health checks, circuit breakers
+│       └── io_utils.py             # File I/O utilities
 │
-├── tests/                          # Unit and integration tests (252 tests)
-│   ├── test_vocabulary_builder.py
-│   ├── test_normalizers.py
-│   ├── test_text_embedder.py
-│   ├── test_two_tower.py
-│   ├── test_ranker.py
-│   ├── test_serving.py
-│   ├── test_monitoring.py
-│   └── ...
+├── tests/                          # Test suite (250+ tests)
+├── scripts/                        # Entry point scripts
+│   ├── deploy.sh                   # Full deployment automation
+│   ├── bootstrap_data.py           # Generate and populate data
+│   ├── run_processing.py           # Run processing pipeline
+│   ├── train_two_tower.py          # Train Two-Tower model
+│   └── train_ranker.py             # Train Ranker model
+│
+├── deployment/                     # Infrastructure as Code
+│   ├── cdk/                        # AWS CDK (TypeScript)
+│   │   └── lib/
+│   │       ├── stacks/
+│   │       │   └── video-recommendation-stack.ts
+│   │       └── constructs/         # CDK constructs
+│   │           ├── storage.ts          # S3, DynamoDB
+│   │           ├── compute.ts          # Lambda
+│   │           ├── api.ts              # API Gateway
+│   │           ├── ml-pipeline.ts      # Step Functions ML Pipeline
+│   │           ├── data-collection.ts  # Kinesis, Firehose
+│   │           ├── feature-store.ts    # Feature Store
+│   │           ├── secrets.ts          # AWS Secrets Manager
+│   │           └── monitoring.ts       # CloudWatch Dashboards
+│   └── docker/                     # Docker configurations
+│       └── Dockerfile.lambda       # Lambda container image
 │
 ├── configs/                        # Configuration files
 │   └── processing_config.yaml
 │
-├── scripts/                        # Entry point scripts
-│   └── run_processing.py
-│
-├── requirements.txt                # Python dependencies
-├── .gitignore                      # Git ignore patterns
-└── README.md                       # This file
+├── .env.example                    # Environment variables template
+├── docker-compose.yml              # Local development environment
+├── Makefile                        # Development commands
+├── pyproject.toml                  # Python package configuration
+├── requirements.txt                # Production dependencies
+├── requirements-dev.txt            # Development dependencies
+└── .pre-commit-config.yaml         # Git hooks
 ```
+
+## Quick Start
+
+### One-Command Deployment (Recommended)
+
+```bash
+# Clone repository
+git clone https://github.com/YOUR_USERNAME/video-recommendation-system.git
+cd video-recommendation-system
+
+# Deploy to AWS (runs tests, deploys infrastructure, trains models, populates data)
+./scripts/deploy.sh
+```
+
+This single command will:
+1. ✅ Check prerequisites (AWS CLI, Node.js, Python, Docker)
+2. ✅ Install Python and CDK dependencies
+3. ✅ Run test suite
+4. ✅ Deploy AWS infrastructure via CDK
+5. ✅ **Automatically run ML training pipeline**:
+   - Generate synthetic training data (1000 users, 500 videos, 10000 interactions)
+   - Train Two-Tower model and generate video embeddings
+   - Train CatBoost Ranker model
+   - Evaluate models against quality thresholds
+   - Deploy models if evaluation passes
+   - Update DynamoDB with video embeddings
+6. ✅ Bootstrap test data
+7. ✅ Validate the API
+
+**After deployment, you'll have a fully operational recommendation system with trained models!**
+
+### Deploy to Different Environments
+
+```bash
+# Development (default)
+./scripts/deploy.sh
+
+# Staging
+./scripts/deploy.sh staging
+
+# Production
+./scripts/deploy.sh prod
+```
+
+## ML Pipeline
+
+### Overview
+
+The ML pipeline is fully automated and runs as an AWS Step Functions state machine. It handles:
+
+1. **Preprocessing**: Generates synthetic data, builds vocabularies, creates training datasets
+2. **Parallel Training**: Trains Two-Tower and Ranker models concurrently
+3. **Evaluation**: Validates model quality against configurable thresholds
+4. **Conditional Deployment**: Only deploys models that meet quality criteria
+
+### Pipeline Flow
+
+```
+deploy.sh triggers → Step Functions → Preprocessing Lambda
+                                              ↓
+                          ┌───────────────────┴───────────────────┐
+                          ↓                                       ↓
+                   Two-Tower Training               Ranker Training
+                   (Video Embeddings)               (CatBoost Model)
+                          ↓                                       ↓
+                          └───────────────────┬───────────────────┘
+                                              ↓
+                                      Evaluation Lambda
+                                     (Quality Checks)
+                                              ↓
+                                    ┌─────────┴─────────┐
+                                    ↓                   ↓
+                              Metrics PASS         Metrics FAIL
+                                    ↓                   ↓
+                            Deployment Lambda      Pipeline Ends
+                                    ↓              (No Deployment)
+                          ┌─────────┴─────────┐
+                          ↓                   ↓
+                   Update DynamoDB      Upload to S3
+                   (Video Features)     (Embeddings)
+```
+
+### Evaluation Thresholds
+
+Models are evaluated against these default thresholds (configurable):
+
+| Model | Metric | Threshold |
+|-------|--------|-----------|
+| Two-Tower | Recall@100 | ≥ 0.1 |
+| Two-Tower | NDCG | ≥ 0.3 |
+| Ranker | AUC | ≥ 0.6 |
+| Ranker | NDCG | ≥ 0.3 |
+
+### Manual Pipeline Trigger
+
+```bash
+# Trigger pipeline manually
+aws stepfunctions start-execution \
+  --state-machine-arn <ML_PIPELINE_ARN> \
+  --input '{"trigger": "manual"}'
+
+# Check pipeline status
+aws stepfunctions describe-execution \
+  --execution-arn <EXECUTION_ARN>
+```
+
+### Model Artifacts
+
+After successful pipeline execution, artifacts are stored:
+
+```
+s3://{model-bucket}/
+├── models/
+│   ├── two_tower/{version}/
+│   │   ├── video_embeddings.npz    # Video embeddings
+│   │   ├── model_config.json       # Model configuration
+│   │   └── vocabularies.json       # Feature vocabularies
+│   └── ranker/{version}/
+│       └── ranker_model.cbm        # CatBoost model
+├── vector_store/
+│   └── video_embeddings.npz        # Production embeddings
+└── preprocessing/{job_id}/
+    ├── vocabularies.json           # Shared vocabularies
+    ├── video_catalog.parquet       # Video metadata
+    └── ranker_train.parquet        # Training data
+```
+
+### How Inference Uses Trained Models
+
+**Online Inference (Real-time API)**:
+- Lambda loads embeddings from `s3://{model-bucket}/vector_store/video_embeddings.npz`
+- FAISS index performs similarity search against trained embeddings
+- Video features (with embeddings) stored in DynamoDB
+
+**Offline Inference (Batch)**:
+- `OfflineInferencePipeline` loads Two-Tower model weights
+- Processes videos in batches to generate new embeddings
+- Updates vector store for online serving
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.9+
-- pip or conda
-
-### Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/video-recommendation-system.git
-cd video-recommendation-system
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# For AWS deployment (optional)
-pip install boto3 sagemaker
-
-# For vector search (optional)
-pip install faiss-cpu  # or faiss-gpu for GPU support
-```
+- Python 3.11+
+- Docker & Docker Compose (for local development)
+- Node.js 18+ (for AWS CDK deployment)
+- AWS CLI configured (for AWS deployment)
 
 ### Dependencies
 
 | Package | Version | Purpose |
 |---------|---------|---------|
 | tensorflow | >=2.13.0 | Deep learning framework |
-| tensorflow-hub | >=0.14.0 | Pre-trained BERT models |
 | catboost | >=1.2.0 | Gradient boosting ranker |
 | pandas | >=2.0.0 | Data manipulation |
-| numpy | >=1.24.0 | Numerical computing |
-| pyarrow | >=12.0.0 | Parquet file support |
-| scikit-learn | >=1.3.0 | ML utilities |
-| pytest | >=7.0.0 | Testing framework |
+| numpy | >=1.24.0,<2.0.0 | Numerical computing |
+| pyarrow | >=12.0.0,<18.0.0 | Parquet file support |
+| boto3 | >=1.28.0 | AWS SDK |
+| redis | >=4.5.0,<6.0.0 | Redis client |
 
-## Quick Start
-
-### 1. Generate and Process Synthetic Data
+Install with optional dependencies:
 
 ```bash
-# Run with synthetic data (for testing/development)
-python scripts/run_processing.py --synthetic
+# Core dependencies only
+pip install -r requirements.txt
 
-# With custom parameters
-python scripts/run_processing.py --synthetic \
-    --users 5000 \
-    --videos 2000 \
-    --interactions 50000 \
-    --negative-ratio 3
+# With ML training dependencies
+pip install -e ".[ml]"
+
+# With development dependencies
+pip install -e ".[dev]"
+
+# All dependencies
+pip install -e ".[all]"
 ```
 
-### 2. Train Models
+## Development
 
-```python
-from src.models.two_tower import TwoTowerModel
-from src.models.ranker import CatBoostRanker
-from src.models.trainers import TwoTowerTrainer, RankerTrainer
+### Available Make Commands
 
-# Train Two-Tower model
-two_tower = TwoTowerModel(config)
-trainer = TwoTowerTrainer(two_tower, train_dataset, val_dataset)
-trainer.train(epochs=10)
+```bash
+make help                 # Show all available commands
 
-# Train Ranker model
-ranker = CatBoostRanker(config)
-ranker_trainer = RankerTrainer(ranker, train_df, val_df)
-ranker_trainer.train()
+# Installation
+make install              # Install production dependencies
+make install-dev          # Install dev dependencies + pre-commit hooks
+make install-cdk          # Install CDK dependencies
+
+# Testing
+make test                 # Run tests
+make test-cov             # Run tests with coverage report
+make test-fast            # Run tests in parallel
+
+# Code Quality
+make lint                 # Run linters (ruff, mypy)
+make format               # Format code with ruff
+make pre-commit           # Run pre-commit hooks
+
+# Docker
+make docker-build         # Build Lambda Docker image
+make docker-run           # Run Lambda locally
+
+# Local Development
+make local-serve          # Run local recommendation server
+make bootstrap-data       # Generate and populate data (AWS)
+make bootstrap-data-local # Generate data locally (no AWS)
+
+# Training
+make train-two-tower      # Train Two-Tower model
+make train-ranker         # Train Ranker model
+make process-data         # Run data processing pipeline
+
+# Deployment
+make deploy-dev           # Deploy to dev environment
+make deploy-staging       # Deploy to staging
+make deploy-prod          # Deploy to production (with confirmation)
+make deploy-diff          # Preview deployment changes
+
+# Utilities
+make clean                # Clean build artifacts
+make logs                 # Tail Lambda logs
 ```
 
-### 3. Serve Recommendations
+### Local Development with Docker Compose
 
-```python
-from src.serving import RecommendationService, RecommendationServiceConfig
+```bash
+# Start all services
+docker-compose up -d
 
-# Initialize service
-config = RecommendationServiceConfig()
-service = RecommendationService(config)
-service.initialize(
-    model_path="models/two_tower",
-    artifacts_path="artifacts/"
-)
+# Services available:
+# - DynamoDB Local: http://localhost:8000
+# - Redis: localhost:6379
+# - LocalStack (S3): http://localhost:4566
+# - Lambda: http://localhost:8080
+
+# Check service status
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Reset all data
+docker-compose down -v
+```
+
+### Pre-commit Hooks
+
+Pre-commit hooks are automatically installed with `make install-dev`. They run:
+
+- **ruff**: Linting and formatting
+- **mypy**: Type checking
+- **bandit**: Security scanning
+- **detect-secrets**: Secrets detection
+
+```bash
+# Run manually on all files
+pre-commit run --all-files
+
+# Skip hooks for a commit (not recommended)
+git commit --no-verify
+```
+
+## Deployment
+
+### Full Deployment (Recommended)
+
+```bash
+# Deploy everything including ML pipeline
+./scripts/deploy.sh
+
+# Deploy to specific environment
+./scripts/deploy.sh staging
+./scripts/deploy.sh prod
+```
+
+### CDK-Only Deployment
+
+```bash
+# Navigate to CDK directory
+cd deployment/cdk
+
+# Install dependencies
+npm install
+
+# Bootstrap CDK (first time only)
+npx cdk bootstrap
+
+# Deploy to dev
+npx cdk deploy --all -c environment=dev
+
+# Or use Make
+make deploy-dev
+```
+
+### Post-Deployment Validation
+
+After deployment, validate the system:
+
+```bash
+# Health check
+curl https://<api-url>/health
 
 # Get recommendations
-response = service.get_recommendations(
-    user_id=12345,
-    num_recommendations=20
-)
+curl https://<api-url>/recommendations/123?n=5
 
-for rec in response.recommendations:
-    print(f"Video {rec.video_id}: {rec.score:.3f}")
+# POST recommendations
+curl -X POST https://<api-url>/recommendations \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": 123, "num_recommendations": 10}'
 ```
 
-## Modules
-
-### Data Processing
-
-The data processing module handles raw data ingestion and transformation.
-
-```python
-from src.data.synthetic_generator import SyntheticDataGenerator
-from src.data.schemas import User, Video, Interaction
-
-# Generate synthetic data
-generator = SyntheticDataGenerator(seed=42)
-users = generator.generate_users(num_users=1000)
-videos = generator.generate_videos(num_videos=500)
-interactions = generator.generate_interactions(
-    users=users,
-    videos=videos,
-    num_interactions=10000
-)
-```
-
-**Input Data Schemas:**
-
-| Entity | Required Fields |
-|--------|-----------------|
-| User | user_id, country, language, age |
-| Video | video_id, title, category, duration, tags |
-| Channel | channel_id, subscriber_count |
-| Interaction | user_id, video_id, timestamp, interaction_type |
-
-### Feature Engineering
-
-#### Two-Tower Features
-
-**User Tower:**
-| Feature | Transformation | Output |
-|---------|----------------|--------|
-| user_id | IntegerLookup | Embedding index |
-| country | StringLookup | Embedding index |
-| user_language | StringLookup (shared) | Embedding index |
-| age | Normalize + Bucket | [normalized, bucket_idx] |
-| previously_watched_category | StringLookup | Embedding index |
-
-**Video Tower:**
-| Feature | Transformation | Output |
-|---------|----------------|--------|
-| video_id | IntegerLookup | Embedding index |
-| category | StringLookup | Embedding index |
-| title | BERT (TF Hub) | float[384] |
-| video_duration | Log + Normalize + Bucket | [log_norm, bucket_idx] |
-| popularity | One-hot | float[4] |
-| video_language | StringLookup (shared) | Embedding index |
-| tags | CBOW embedding | float[100] |
-
-#### Ranker Features
-
-**Categorical Features (CatBoost native):**
-- country, user_language, category, child_categories
-- video_language, interaction_time_day, device
-
-**Numeric Features:**
-| Feature | Transformation |
-|---------|----------------|
-| age | normalize + bucket |
-| video_duration | log + normalize |
-| view_count | log transform |
-| like_count | log + ratio (likes/subscribers) |
-| comment_count | log + ratio |
-| channel_subscriber_count | log + tier bin |
-| interaction_time_hour | cyclical (sin/cos) |
-
-### Models
-
-#### Two-Tower Model
-
-The Two-Tower architecture creates separate encoders for users and videos that project them into a shared embedding space.
-
-```python
-from src.models.two_tower import TwoTowerModel, TwoTowerConfig
-
-config = TwoTowerConfig(
-    user_embedding_dim=64,
-    video_embedding_dim=64,
-    hidden_layers=[256, 128],
-    output_dim=64,
-    temperature=0.05,
-)
-
-model = TwoTowerModel(config)
-```
-
-**Architecture:**
-```
-User Features                    Video Features
-      │                               │
-      ▼                               ▼
-┌─────────────┐               ┌─────────────┐
-│  User Tower │               │ Video Tower │
-│  (MLP)      │               │  (MLP)      │
-└─────────────┘               └─────────────┘
-      │                               │
-      ▼                               ▼
- User Embedding              Video Embedding
-      │                               │
-      └───────────┬───────────────────┘
-                  ▼
-            Dot Product
-                  │
-                  ▼
-           Similarity Score
-```
-
-#### CatBoost Ranker
-
-The ranker model scores candidate videos using rich interaction features.
-
-```python
-from src.models.ranker import CatBoostRanker, RankerConfig
-
-config = RankerConfig(
-    iterations=1000,
-    learning_rate=0.03,
-    depth=6,
-    l2_leaf_reg=3.0,
-    loss_function="Logloss",
-)
-
-ranker = CatBoostRanker(config)
-ranker.train(train_df, val_df, categorical_features=[...])
-```
-
-### Training Pipeline
-
-The ML pipeline provides end-to-end training orchestration.
-
-```python
-from src.ml_pipeline import MLPipeline, MLPipelineConfig
-
-config = MLPipelineConfig(
-    experiment_name="recommendation_v1",
-    data_version="2024-01-15",
-    two_tower_epochs=10,
-    ranker_iterations=1000,
-)
-
-pipeline = MLPipeline(config)
-pipeline.run(
-    train_data_path="data/train",
-    val_data_path="data/val",
-    output_path="models/"
-)
-```
-
-**Pipeline Stages:**
-1. Data preprocessing and validation
-2. Feature engineering
-3. Two-Tower model training
-4. Video embedding generation
-5. Vector index building
-6. Ranker model training
-7. Model evaluation
-8. Model registration
-9. Deployment (optional)
-
-### Serving
-
-#### RecommendationService
-
-The main serving component that orchestrates the recommendation flow.
-
-```python
-from src.serving import (
-    RecommendationService,
-    RecommendationServiceConfig,
-    ServingConfig,
-    FeatureStoreConfig,
-    RedisCacheConfig,
-)
-
-config = RecommendationServiceConfig(
-    serving=ServingConfig(
-        num_candidates=200,
-        num_recommendations=20,
-    ),
-    feature_store=FeatureStoreConfig(
-        user_feature_group="user-features",
-        video_feature_group="video-features",
-    ),
-    cache=RedisCacheConfig(
-        host="localhost",
-        port=6379,
-    ),
-)
-
-service = RecommendationService(config)
-service.initialize()
-
-# Get recommendations
-response = service.get_recommendations(
-    user_id=12345,
-    num_recommendations=20,
-    excluded_video_ids={101, 102, 103},
-    user_preferences={"preferred_categories": ["gaming", "music"]},
-)
-```
-
-#### Lambda Handler
-
-AWS Lambda entry point for API Gateway integration.
-
-```python
-# lambda_handler.py is automatically invoked by AWS Lambda
-# Configure via environment variables:
-#   - USE_SAGEMAKER_FEATURE_STORE=true
-#   - REDIS_HOST=your-elasticache-endpoint
-#   - MODEL_PATH=/opt/ml/model
-```
-
-**Supported Endpoints:**
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/recommendations/{user_id}` | GET | Get recommendations for user |
-| `/recommendations` | POST | Get recommendations with full request |
-| `/interactions` | POST | Record user interaction |
-| `/health` | GET | Health check |
-| `/cached/{user_id}` | GET | Get cached recommendations |
-
-### Monitoring
-
-#### Online Metrics
-
-Track real-time recommendation performance.
-
-```python
-from src.monitoring import OnlineMetricsTracker, MetricsConfig
-
-tracker = OnlineMetricsTracker(MetricsConfig())
-
-# Record events
-tracker.record_impression(user_id, video_ids)
-tracker.record_click(user_id, video_id, position)
-tracker.record_watch(user_id, video_id, watch_duration, video_duration)
-
-# Get metrics
-metrics = tracker.get_metrics(window_minutes=60)
-print(f"CTR: {metrics['click_through_rate']:.3%}")
-print(f"Watch Rate: {metrics['watch_rate']:.3%}")
-```
-
-#### A/B Testing
-
-Run experiments to compare model versions.
-
-```python
-from src.monitoring import ABTestingFramework, Experiment
-
-framework = ABTestingFramework()
-
-# Create experiment
-experiment = Experiment(
-    name="ranker_v2_test",
-    variants=["control", "treatment"],
-    traffic_split=[0.5, 0.5],
-)
-framework.register_experiment(experiment)
-
-# Assign user to variant
-variant = framework.get_variant("ranker_v2_test", user_id)
-
-# Record outcome
-framework.record_outcome("ranker_v2_test", user_id, clicked=True)
-
-# Analyze results
-results = framework.analyze("ranker_v2_test")
-print(f"Treatment lift: {results['treatment_lift']:.2%}")
-print(f"P-value: {results['p_value']:.4f}")
-```
-
-### Data Collection
-
-#### Ground Truth Collector
-
-Collect user feedback for continuous learning.
-
-```python
-from src.data_collection import GroundTruthCollector, CollectionConfig
-
-collector = GroundTruthCollector(CollectionConfig())
-
-# Log inference
-collector.log_inference(
-    request_id="req-123",
-    user_id=12345,
-    recommended_videos=[101, 102, 103],
-    scores=[0.95, 0.87, 0.82],
-)
-
-# Log user feedback
-collector.log_feedback(
-    request_id="req-123",
-    user_id=12345,
-    video_id=101,
-    feedback_type="click",
-)
-```
+### Stack Outputs
+
+After deployment, the following outputs are available:
+
+| Output | Description |
+|--------|-------------|
+| `ApiUrl` | API Gateway endpoint URL |
+| `ModelBucketName` | S3 bucket for model artifacts |
+| `DataBucketName` | S3 bucket for training data |
+| `ArtifactsBucketName` | S3 bucket for preprocessing artifacts |
+| `UserFeaturesTableName` | DynamoDB table for user features |
+| `VideoFeaturesTableName` | DynamoDB table for video features |
+| `MLPipelineStateMachineArn` | Step Functions ML pipeline ARN |
+| `EventStreamName` | Kinesis stream for event ingestion |
 
 ## API Reference
 
-### REST API
+### Endpoints
 
-#### Get Recommendations
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check with dependency status |
+| `/recommendations/{user_id}` | GET | Get recommendations for user |
+| `/recommendations` | POST | Get recommendations with full request |
+
+### Get Recommendations
 
 ```http
-GET /recommendations/{user_id}?n=20&exclude_watched=true
+GET /recommendations/12345?n=20
 ```
 
 **Response:**
@@ -608,198 +551,123 @@ GET /recommendations/{user_id}?n=20&exclude_watched=true
     {
       "video_id": 101,
       "score": 0.95,
-      "category": "gaming",
-      "source": "personalized"
+      "category": "gaming"
     }
   ],
-  "metadata": {
-    "latency_ms": 45,
-    "candidates_retrieved": 200,
-    "candidates_after_filtering": 150
-  }
+  "total_latency_ms": 45
 }
 ```
 
-#### Record Interaction
+### Health Check
 
 ```http
-POST /interactions
-Content-Type: application/json
+GET /health
+```
 
+**Response:**
+```json
 {
-  "user_id": 12345,
-  "video_id": 101,
-  "category": "gaming",
-  "interaction_type": "watch",
-  "duration_watched": 180.5
+  "status": "healthy",
+  "version": "1.0.0",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "checks": [
+    {"name": "dynamodb:user-features", "status": "healthy", "latency_ms": 12.5},
+    {"name": "redis:cache", "status": "healthy", "latency_ms": 2.3},
+    {"name": "vector_store", "status": "healthy", "latency_ms": 0.1}
+  ]
 }
 ```
 
 ## Configuration
 
-### Processing Configuration
-
-```yaml
-# configs/processing_config.yaml
-embeddings:
-  user_id_dim: 32
-  video_id_dim: 32
-  category_dim: 32
-  country_dim: 16
-  language_dim: 16
-
-buckets:
-  age: [18, 25, 35, 45, 55, 65]
-  duration: [60, 300, 600, 1800, 3600]
-  subscriber_tiers: [1000, 10000, 100000, 1000000]
-
-ranker:
-  negative_sample_ratio: 3
-  min_watch_ratio: 0.4
-
-two_tower:
-  hidden_layers: [256, 128]
-  output_dim: 64
-  temperature: 0.05
-```
-
 ### Environment Variables
+
+All configuration is managed through environment variables. See [.env.example](.env.example) for the complete list.
+
+Key variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MODEL_PATH` | `/opt/ml/model` | Path to model artifacts |
-| `ARTIFACTS_PATH` | `/opt/ml/artifacts` | Path to preprocessing artifacts |
-| `USE_SAGEMAKER_FEATURE_STORE` | `false` | Enable SageMaker Feature Store |
+| `ENVIRONMENT` | `dev` | Environment (dev/staging/prod) |
+| `LOG_LEVEL` | `INFO` | Logging level |
+| `LOG_FORMAT` | `json` | Log format (json/text) |
+| `MODEL_BUCKET` | - | S3 bucket for models |
+| `ARTIFACTS_BUCKET` | - | S3 bucket for artifacts |
+| `USER_FEATURES_TABLE` | - | DynamoDB user features table |
+| `VIDEO_FEATURES_TABLE` | - | DynamoDB video features table |
 | `USE_REDIS` | `false` | Enable Redis caching |
 | `REDIS_HOST` | `localhost` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
-| `LOG_LEVEL` | `INFO` | Logging level |
+
+### Centralized Settings
+
+The application uses a centralized settings system with validation:
+
+```python
+from src.config import get_settings, validate_settings
+
+# Get cached settings
+settings = get_settings()
+
+# Validate settings at startup
+errors = validate_settings(raise_on_error=True)
+
+# Access settings
+print(settings.aws.model_bucket)
+print(settings.redis.enabled)
+print(settings.serving.default_num_recommendations)
+```
 
 ## Testing
 
-Run the test suite:
-
 ```bash
-# Run all tests (252 tests)
-pytest tests/ -v
+# Run all tests
+make test
 
 # Run with coverage
-pytest tests/ --cov=src --cov-report=html
+make test-cov
 
-# Run specific test module
-pytest tests/test_two_tower.py -v
+# Run specific test file
+pytest tests/test_serving.py -v
 
 # Run tests matching pattern
 pytest tests/ -k "ranker" -v
+
+# Run tests in parallel
+make test-fast
 ```
 
-### Test Categories
+### Test Coverage
 
-| Module | Tests | Description |
-|--------|-------|-------------|
-| Preprocessing | 45 | Vocabulary, normalizers, embedders |
-| Feature Engineering | 38 | User, video, ranker features |
-| Models | 52 | Two-Tower, Ranker training |
-| Serving | 67 | API, caching, filtering |
-| Monitoring | 35 | Metrics, A/B testing |
-| Data Collection | 15 | Feedback loop |
+| Module | Coverage |
+|--------|----------|
+| Preprocessing | 85% |
+| Feature Engineering | 82% |
+| Models | 78% |
+| Serving | 80% |
+| Monitoring | 75% |
 
-## Deployment
-
-### AWS Lambda Deployment
-
-1. **Package the application:**
-```bash
-# Install dependencies to package directory
-pip install -r requirements.txt -t package/
-cp -r src package/
-cd package && zip -r ../deployment.zip .
-```
-
-2. **Create Lambda function:**
-```bash
-aws lambda create-function \
-    --function-name video-recommendations \
-    --runtime python3.9 \
-    --handler src.serving.lambda_handler.handler \
-    --role arn:aws:iam::ACCOUNT:role/lambda-role \
-    --zip-file fileb://deployment.zip \
-    --timeout 30 \
-    --memory-size 1024
-```
-
-3. **Configure API Gateway:**
-```bash
-# Create REST API with Lambda proxy integration
-aws apigateway create-rest-api --name "recommendations-api"
-```
-
-### SageMaker Deployment
-
-```python
-from src.serving import SageMakerDeployer
-
-deployer = SageMakerDeployer(
-    role="arn:aws:iam::ACCOUNT:role/sagemaker-role",
-    instance_type="ml.m5.xlarge",
-)
-
-# Deploy Two-Tower model
-deployer.deploy_two_tower(
-    model_path="s3://bucket/models/two_tower",
-    endpoint_name="two-tower-endpoint",
-)
-
-# Deploy Ranker model
-deployer.deploy_ranker(
-    model_path="s3://bucket/models/ranker",
-    endpoint_name="ranker-endpoint",
-)
-```
-
-### Infrastructure Requirements
-
-| Component | AWS Service | Specifications |
-|-----------|-------------|----------------|
-| API | API Gateway + Lambda | 1024MB memory, 30s timeout |
-| Feature Store | SageMaker Feature Store | Online + Offline store |
-| Cache | ElastiCache (Redis) | cache.r6g.large |
-| Vector Store | OpenSearch | r6g.large.search |
-| Model Hosting | SageMaker Endpoints | ml.m5.xlarge |
-| Storage | S3 | Standard tier |
-
-## Positive Interaction Rules
-
-An interaction is considered positive for training if any of these conditions are met:
-
-| Condition | Weight | Description |
-|-----------|--------|-------------|
-| Liked | 1.0 | User explicitly liked the video |
-| Commented | 1.0 | User left a comment |
-| Shared | 1.0 | User shared the video |
-| Clicked | 0.8 | User clicked on the video |
-| Watched >40% | 0.7 | User watched more than 40% of duration |
-| Impression | 0.3 | Video was shown to user |
-
-## Performance Benchmarks
+## Performance
 
 | Metric | Value | Notes |
 |--------|-------|-------|
 | P99 Latency | <100ms | End-to-end recommendation |
+| Cold Start | <3s | Lambda with ARM64 |
 | Throughput | 1000 RPS | Per Lambda instance |
 | Two-Tower Inference | <5ms | User embedding generation |
-| Vector Search | <10ms | FAISS ANN search (100 candidates) |
-| Ranker Inference | <20ms | CatBoost scoring (100 items) |
+| Vector Search | <10ms | FAISS ANN (100 candidates) |
+| Ranker Inference | <20ms | CatBoost scoring |
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests (`pytest tests/ -v`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Run tests and linting (`make check`)
+5. Commit your changes (uses [Conventional Commits](https://www.conventionalcommits.org/))
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 

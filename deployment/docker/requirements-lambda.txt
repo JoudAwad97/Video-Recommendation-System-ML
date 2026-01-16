@@ -1,0 +1,31 @@
+# Lambda requirements - optimized for cold start performance
+# Only includes dependencies needed for inference, not training
+
+# Core ML inference
+# Pin EXACT versions to ensure compatibility and use pre-built wheels
+# These versions are tested to work together on ARM64 Lambda
+numpy==1.26.4
+scipy==1.13.1
+pandas==2.1.4
+scikit-learn==1.4.2
+
+# Ranking model inference
+# Install catboost without matplotlib/graphviz (visualization deps not needed in Lambda)
+# We use --no-deps in Dockerfile and install only the core dependencies
+catboost==1.2.7
+
+# Data serialization
+pyarrow>=12.0.0,<18.0.0
+
+# AWS SDK
+boto3>=1.28.0
+
+# Redis cache (optional)
+redis>=4.5.0,<6.0.0
+
+# Configuration
+pyyaml>=6.0
+
+# Note: TensorFlow is NOT included for Lambda due to size constraints
+# The Two-Tower model embeddings should be pre-computed and stored
+# For real-time embedding generation, use SageMaker endpoints

@@ -7,7 +7,7 @@ SageMaker Feature Store or local cache.
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from abc import ABC, abstractmethod
 import json
 

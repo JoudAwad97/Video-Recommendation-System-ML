@@ -24,7 +24,7 @@ from .pipeline_config import (
 from .preprocessing_job import (
     PreprocessingJob,
     PreprocessingResult,
-    SageMakerPreprocessingJob,
+    run_preprocessing,
 )
 from .data_versioning import (
     DataVersionManager,
@@ -36,7 +36,8 @@ from .training_orchestrator import (
     TrainingJobResult,
     TrainingMetrics,
     TrainingJobStatus,
-    SageMakerTrainingJob,
+    start_two_tower_training,
+    start_ranker_training,
 )
 from .model_registry import (
     ModelRegistry,
@@ -74,7 +75,7 @@ __all__ = [
     # Preprocessing
     "PreprocessingJob",
     "PreprocessingResult",
-    "SageMakerPreprocessingJob",
+    "run_preprocessing",
     # Data Versioning
     "DataVersionManager",
     "DataVersion",
@@ -84,7 +85,8 @@ __all__ = [
     "TrainingJobResult",
     "TrainingMetrics",
     "TrainingJobStatus",
-    "SageMakerTrainingJob",
+    "start_two_tower_training",
+    "start_ranker_training",
     # Model Registry
     "ModelRegistry",
     "RegisteredModel",
